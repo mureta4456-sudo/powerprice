@@ -1,0 +1,10 @@
+{
+  "short_name": "PowerPrice",
+  "name": "PowerPrice — Real-time EU electricity prices",
+  "description": "Track real-time spot electricity prices across the EU, with AI tips and an energy blog.",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "start_url": "/",
+  "sc
