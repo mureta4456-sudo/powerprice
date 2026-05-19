@@ -1,6 +1,6 @@
 // Minimal service worker — pietiekams, lai Chrome / Edge piedāvātu
 // "Install App" un lapa darbotos no kešas, ja tīkls īslaicīgi pazūd.
-const CACHE = "powerprice-v1";
+const CACHE = "powerprice-v2";
 const ASSETS = ["/", "/icon-192.png", "/icon-512.png", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
