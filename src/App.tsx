@@ -469,4 +469,12 @@ export default function App() {
           : (
             <main className="max-w-3xl mx-auto px-4 py-16 text-center">
               <p className="text-slate-500 mb-4">404</p>
-              <button onClick={() => navigate({ view: "blog" })} className="text-emera
+              <button onClick={() => navigate({ view: "blog" })} className="text-emerald-600 font-bold hover:underline">
+                {t("blog_back")}
+              </button>
+            </main>
+          )
+      )}
+    </div>
+  );
+}
