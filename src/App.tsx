@@ -233,13 +233,26 @@ function HomeView() {
 
       <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-8 text-emerald-500 font-bold"><BarChart3 size={20} /><h3>{t("chart_title")}</h3></div>
-        <div className="h-64 w-full">
+        <div className="h-80 sm:h-72 w-full">
           <ResponsiveContainer>
-            <AreaChart data={targetPrices.map(p => ({ time: format(parseISO(p.time), "HH:mm"), value: p.value }))}>
+            <AreaChart
+              data={targetPrices.map(p => ({ time: format(parseISO(p.time), "HH:mm"), value: p.value }))}
+              margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
+            >
               <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval={3} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+              <XAxis
+                dataKey="time"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: '#94a3b8' }}
+                interval="preserveStartEnd"
+                minTickGap={15}
+                angle={-45}
+                textAnchor="end"
+                height={50}
+              />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} width={40} />
               <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0/0.1)' }} />
               <ReferenceLine y={avgPrice} stroke="#94a3b8" strokeDasharray="3 3" />
               <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={3} fill="url(#g)" animationDuration={1000} />
@@ -456,17 +469,4 @@ export default function App() {
           : (
             <main className="max-w-3xl mx-auto px-4 py-16 text-center">
               <p className="text-slate-500 mb-4">404</p>
-              <button onClick={() => navigate({ view: "blog" })} className="text-emerald-600 font-bold">
-                {t("blog_back")}
-              </button>
-            </main>
-          )
-      )}
-
-      <footer className="max-w-4xl mx-auto px-4 text-center text-xs text-slate-400 space-y-4 pt-12">
-        <p>{t("source_info")}</p>
-        <p>© {new Date().getFullYear()} PowerPrice</p>
-      </footer>
-    </div>
-  );
-}
+              <button onClick={() => navigate({ view: "blog" })} className="text-emera
