@@ -479,4 +479,42 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <button onClick={() => navigate({ view: "home" })} className="flex items-center gap-2">
-            <Zap size={24} classNam
+            <Zap size={24} className="text-emerald-500" fill="currentColor" />
+            <h1 className="text-xl font-bold tracking-tight">{t("app_name")}</h1>
+          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate({ view: "blog" })}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${route.view !== "home" ? "bg-emerald-50 text-emerald-600" : "text-slate-500 hover:text-emerald-600"}`}
+            >
+              {t("blog_title")}
+            </button>
+            <select
+              value={i18n.language.split("-")[0]}
+              onChange={e => i18n.changeLanguage(e.target.value)}
+              className="bg-slate-100 px-2 py-1 rounded text-xs font-bold outline-none max-w-[110px]"
+              aria-label="Language"
+            >
+              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+            </select>
+          </div>
+        </div>
+      </header>
+
+      {route.view === "home" && <HomeView />}
+      {route.view === "blog" && <BlogListView />}
+      {route.view === "post" && (
+        post
+          ? <PostView post={post} />
+          : (
+            <main className="max-w-3xl mx-auto px-4 py-16 text-center">
+              <p className="text-slate-500 mb-4">404</p>
+              <button onClick={() => navigate({ view: "blog" })} className="text-emerald-600 font-bold hover:underline">
+                {t("blog_back")}
+              </button>
+            </main>
+          )
+      )}
+    </div>
+  );
+}
