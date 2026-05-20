@@ -122,6 +122,38 @@ function HomeView() {
   const [fetchingAdvice, setFetchingAdvice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    const installed = () => setInstallPrompt(null);
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", installed);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", installed);
+    };
+  }, []);
+
+  const isIos = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = typeof window !== "undefined" && (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as any).standalone === true
+  );
+  const canInstall = (installPrompt || isIos) && !isStandalone;
+
+  const handleInstall = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === "accepted") setInstallPrompt(null);
+    } else if (isIos) {
+      alert("Lai instalētu lietotni: pieskaries dalīšanās ikonai ↑ un izvēlies 'Pievienot sākuma ekrānam' / 'Add to Home Screen'.");
+    }
+  };
 
   const fetchPrices = useCallback(async () => {
     setLoading(true);
@@ -218,15 +250,18 @@ function HomeView() {
             <button onClick={() => setViewDate("tomorrow")} disabled={prices.length < 24} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewDate === "tomorrow" ? "bg-white shadow text-emerald-600" : "text-slate-500 disabled:opacity-50"}`}>{t("tomorrow")}</button>
           </div>
           {lastUpdated && (
-            <button
-              onClick={fetchPrices}
-              disabled={loading}
-              className="flex items-center gap-2 text-xs text-slate-500 hover:text-emerald-600 transition-colors disabled:opacity-50"
-              title={t("refresh")}
-            >
-              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-              <span>{t("last_updated")}: {format(lastUpdated, "dd.MM.yyyy HH:mm")}</span>
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={fetchPrices}
+                disabled={loading}
+                className="flex items-center gap-2 text-xs text-slate-500 hover:text-emerald-600 transition-colors disabled:opacity-50"
+                title={t("refresh")}
+              >
+                <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+                <span>{t("last_updated")}: {format(lastUpdated, "dd.MM.yyyy HH:mm")}</span>
+              </button>
+              <span className="text-[10px] text-slate-400 tracking-wide">ENTSO-E</span>
+            </div>
           )}
         </div>
       </section>
@@ -317,18 +352,23 @@ function HomeView() {
         </section>
       </div>
 
-      <section className="bg-slate-800 p-8 rounded-3xl text-white relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
-          <div>
-            <h3 className="text-2xl font-bold mb-2">{t("install_app")}</h3>
-            <p className="text-slate-400 text-sm">{t("install_subtitle")}</p>
+      {canInstall && (
+        <section className="bg-slate-800 p-8 rounded-3xl text-white relative overflow-hidden">
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
+            <div>
+              <h3 className="text-2xl font-bold mb-2">{t("install_app")}</h3>
+              <p className="text-slate-400 text-sm">{t("install_subtitle")}</p>
+            </div>
+            <button
+              onClick={handleInstall}
+              className="bg-emerald-500 hover:bg-emerald-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
+            >
+              <Download size={20} /> {t("install_app")}
+            </button>
           </div>
-          <button className="bg-emerald-500 hover:bg-emerald-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
-            <Download size={20} /> {t("install_app")}
-          </button>
-        </div>
-        <Zap className="absolute bottom-[-10px] right-[-30px] w-48 h-48 text-emerald-500/10 rotate-12" />
-      </section>
+          <Zap className="absolute bottom-[-10px] right-[-30px] w-48 h-48 text-emerald-500/10 rotate-12" />
+        </section>
+      )}
     </main>
   );
 }
@@ -439,42 +479,4 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <button onClick={() => navigate({ view: "home" })} className="flex items-center gap-2">
-            <Zap size={24} className="text-emerald-500" fill="currentColor" />
-            <h1 className="text-xl font-bold tracking-tight">{t("app_name")}</h1>
-          </button>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate({ view: "blog" })}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${route.view !== "home" ? "bg-emerald-50 text-emerald-600" : "text-slate-500 hover:text-emerald-600"}`}
-            >
-              {t("blog_title")}
-            </button>
-            <select
-              value={i18n.language.split("-")[0]}
-              onChange={e => i18n.changeLanguage(e.target.value)}
-              className="bg-slate-100 px-2 py-1 rounded text-xs font-bold outline-none max-w-[110px]"
-              aria-label="Language"
-            >
-              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-            </select>
-          </div>
-        </div>
-      </header>
-
-      {route.view === "home" && <HomeView />}
-      {route.view === "blog" && <BlogListView />}
-      {route.view === "post" && (
-        post
-          ? <PostView post={post} />
-          : (
-            <main className="max-w-3xl mx-auto px-4 py-16 text-center">
-              <p className="text-slate-500 mb-4">404</p>
-              <button onClick={() => navigate({ view: "blog" })} className="text-emerald-600 font-bold hover:underline">
-                {t("blog_back")}
-              </button>
-            </main>
-          )
-      )}
-    </div>
-  );
-}
+            <Zap size={24} classNam
