@@ -51,11 +51,16 @@ function getFresh<T>(map: Map<string, Cached<T>>, key: string): T | null {
 async function fetchPricesFromEntsoe(country: string, token: string) {
   const domain = DOMAIN_MAPPING[country];
   if (!domain) throw new Error("Unsupported country code");
+
+  // Use UTC midnight to ensure correct date boundaries regardless of server timezone
   const now = new Date();
-  const start = new Date(now); start.setHours(0, 0, 0, 0);
-  const end = new Date(now); end.setDate(end.getDate() + 2); end.setHours(0, 0, 0, 0);
-  const fmt = (d: Date) => d.toISOString().replace(/[:-]/g, "").split(".")[0].replace("T", "").slice(0, 12);
-  const url = `https://web-api.tp.entsoe.eu/api?securityToken=${token}&documentType=A44&in_Domain=${domain}&out_Domain=${domain}&periodStart=${fmt(start)}&periodEnd=${fmt(end)}`;
+  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const endUtc   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2, 0, 0, 0));
+
+  const fmt = (d: Date) =>
+    d.toISOString().replace(/[:-]/g, "").split(".")[0].replace("T", "").slice(0, 12);
+
+  const url = `https://web-api.tp.entsoe.eu/api?securityToken=${token}&documentType=A44&in_Domain=${domain}&out_Domain=${domain}&periodStart=${fmt(startUtc)}&periodEnd=${fmt(endUtc)}`;
   const response = await axios.get(url, { timeout: 15000 });
   const result = await parseStringPromise(response.data);
   if (result.Acknowledgement_MarketDocument) {
@@ -74,9 +79,9 @@ async function fetchPricesFromEntsoe(country: string, token: string) {
       const priceAmount = parseFloat(p["price.amount"][0]);
       const pointTime = new Date(startStr);
       if (resolution === "PT60M" || resolution === "PT1H") {
-        pointTime.setHours(pointTime.getHours() + position - 1);
+        pointTime.setUTCHours(pointTime.getUTCHours() + position - 1);
       } else if (resolution === "PT15M") {
-        pointTime.setMinutes(pointTime.getMinutes() + (position - 1) * 15);
+        pointTime.setUTCMinutes(pointTime.getUTCMinutes() + (position - 1) * 15);
       }
       prices.push({ time: pointTime.toISOString(), value: priceAmount / 10 });
     });
@@ -165,21 +170,25 @@ ${priceLines}
 Return ONLY a JSON array of exactly 3 strings, no other text. Example: ["tip 1", "tip 2", "tip 3"]`;
 
   try {
-    // Try the modern flash model first; if SDK rejects it, fall back to 1.5-flash.
-    let model;
+    // Use gemini-2.0-flash; errors from generateContent are caught below.
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
+    });
+
+    let result;
     try {
-      model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
-        generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
-      });
-    } catch {
-      model = genAI.getGenerativeModel({
+      result = await model.generateContent(prompt);
+    } catch (genErr: any) {
+      // Primary model failed — retry with the stable 1.5-flash fallback
+      console.warn("[advice] gemini-2.0-flash failed, retrying with gemini-1.5-flash:", genErr?.message);
+      const fallbackModel = genAI.getGenerativeModel({
         model: "gemini-1.5-flash",
         generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
       });
+      result = await fallbackModel.generateContent(prompt);
     }
 
-    const result = await model.generateContent(prompt);
     const raw = result.response.text();
     const advice = extractAdviceArray(raw);
 
