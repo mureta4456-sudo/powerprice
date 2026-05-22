@@ -170,23 +170,35 @@ ${priceLines}
 Return ONLY a JSON array of exactly 3 strings, no other text. Example: ["tip 1", "tip 2", "tip 3"]`;
 
   try {
-    // Use gemini-2.0-flash; errors from generateContent are caught below.
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
-    });
+    // Models to try, in order. As of 2026-05, gemini-1.5-flash is fully
+    // shut down (returns 404) and gemini-2.0-flash is being retired on
+    // 2026-06-01, so gemini-2.5-flash is the current default and
+    // gemini-2.5-flash-lite is a robust, lower-cost fallback.
+    const MODEL_CANDIDATES = [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+    ];
 
     let result;
-    try {
-      result = await model.generateContent(prompt);
-    } catch (genErr: any) {
-      // Primary model failed — retry with the stable 1.5-flash fallback
-      console.warn("[advice] gemini-2.0-flash failed, retrying with gemini-1.5-flash:", genErr?.message);
-      const fallbackModel = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
-      });
-      result = await fallbackModel.generateContent(prompt);
+    let lastErr: any = null;
+    for (const modelName of MODEL_CANDIDATES) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
+        });
+        result = await model.generateContent(prompt);
+        if (modelName !== MODEL_CANDIDATES[0]) {
+          console.warn(`[advice] Primary model failed; succeeded with fallback "${modelName}"`);
+        }
+        break;
+      } catch (genErr: any) {
+        lastErr = genErr;
+        console.warn(`[advice] Model "${modelName}" failed:`, genErr?.message);
+      }
+    }
+    if (!result) {
+      throw lastErr || new Error("All Gemini models failed");
     }
 
     const raw = result.response.text();
