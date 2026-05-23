@@ -314,7 +314,7 @@ function HomeView() {
         <section className="space-y-4">
           <div className="flex items-center gap-2 font-bold"><HelpCircle size={20} className="text-blue-500" /><h3>{t("faq_title")}</h3></div>
           <div className="space-y-3">
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3, 4, 5, 6].map(i => (
               <div key={i} className="bg-white p-4 rounded-xl border border-slate-100">
                 <h4 className="font-bold text-sm mb-1">{t(`q${i}`)}</h4>
                 <p className="text-xs text-slate-500">{t(`a${i}`)}</p>
