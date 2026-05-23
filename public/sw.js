@@ -12,7 +12,7 @@
 // (piem. "powerprice-v3" -> "powerprice-v4"). Vecās kešas tiks dzēstas
 // automātiski "activate" solī.
 
-const CACHE = "powerprice-v5";
+const CACHE = "powerprice-v6";
 
 // Pre-cache tikai aktīvi, kuru URL nemainās starp buildiem
 // (Vite tos NEhashed — jo tie atrodas /public/ mapē).
