@@ -167,7 +167,7 @@ async function start() {
       setHeaders: (res, filePath) => {
 
         // index.html NEKEŠOJAM
-        if (filePath.endsWith("index.html")) {
+       if (filePath.endsWith("index.html") || filePath.endsWith("sw.js")) {
           res.setHeader(
             "Cache-Control",
             "no-store, no-cache, must-revalidate, proxy-revalidate"
