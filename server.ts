@@ -143,7 +143,37 @@ app.get("/api/prices", async (req, res) => {
     });
   }
 });
+app.post("/api/advice", async (req, res) => {
+  const { prices, country, locale } = req.body || {};
+  if (!prices?.length) return res.status(400).json({ advice: [] });
 
+  const langName = LANGUAGE_NAMES[locale] || "English";
+  const cacheKey = `${country}-${locale}`;
+  const cached = getFresh(adviceCache, cacheKey);
+  if (cached) return res.json({ advice: cached });
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const topCheap = [...prices].sort((a, b) => a.value - b.value).slice(0, 3);
+    const topExp  = [...prices].sort((a, b) => b.value - a.value).slice(0, 3);
+    const avg = (prices.reduce((s: number, p: any) => s + p.value, 0) / prices.length).toFixed(2);
+
+    const prompt = `You are an energy-saving assistant. Today's average electricity spot price in ${country} is ${avg} ct/kWh.
+Cheapest hours: ${topCheap.map((p: any) => `${new Date(p.time).getUTCHours()}:00 (${p.value.toFixed(2)} ct)`).join(", ")}.
+Most expensive: ${topExp.map((p: any) => `${new Date(p.time).getUTCHours()}:00 (${p.value.toFixed(2)} ct)`).join(", ")}.
+Give exactly 3 short practical tips (1-2 sentences each) for household energy use today. Reply in ${langName}. Return only a JSON array of 3 strings, no other text.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim().replace(/```json|```/g, "").trim();
+    const advice: string[] = JSON.parse(text);
+
+    adviceCache.set(cacheKey, { data: advice, expires: Date.now() + ADVICE_TTL_MS });
+    res.json({ advice });
+  } catch (err: any) {
+    console.error("Gemini error:", err.message);
+    res.status(500).json({ advice: [] });
+  }
+});
 async function start() {
   if (process.env.NODE_ENV !== "production") {
 
