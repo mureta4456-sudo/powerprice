@@ -260,7 +260,7 @@ function HomeView() {
                 <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
                 <span>{t("last_updated")}: {format(lastUpdated, "dd.MM.yyyy HH:mm")}</span>
               </button>
-              <span className="text-[10px] text-slate-400 tracking-wide">ENTSO-E</span>
+              <span className="text-[10px] text-slate-400 tracking-wide">{t("source_info")}</span>
             </div>
           )}
         </div>
