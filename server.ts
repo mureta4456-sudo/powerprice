@@ -52,7 +52,6 @@ async function fetchPricesFromEntsoe(country: string, token: string) {
   const domain = DOMAIN_MAPPING[country];
   if (!domain) throw new Error("Unsupported country code");
 
-  // Use UTC midnight to ensure correct date boundaries regardless of server timezone
   const now = new Date();
   const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
   const endUtc   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2, 0, 0, 0));
@@ -61,170 +60,140 @@ async function fetchPricesFromEntsoe(country: string, token: string) {
     d.toISOString().replace(/[:-]/g, "").split(".")[0].replace("T", "").slice(0, 12);
 
   const url = `https://web-api.tp.entsoe.eu/api?securityToken=${token}&documentType=A44&in_Domain=${domain}&out_Domain=${domain}&periodStart=${fmt(startUtc)}&periodEnd=${fmt(endUtc)}`;
+
   const response = await axios.get(url, { timeout: 15000 });
   const result = await parseStringPromise(response.data);
+
   if (result.Acknowledgement_MarketDocument) {
     const reason = result.Acknowledgement_MarketDocument.Reason?.[0]?.text?.[0];
     throw new Error(reason || "API refused request");
   }
+
   const timeSeries = result.Publication_MarketDocument?.TimeSeries;
   if (!timeSeries) return [];
+
   const prices: { time: string; value: number }[] = [];
+
   timeSeries.forEach((ts: any) => {
     const period = ts.Period[0];
     const startStr = period.timeInterval[0].start[0];
     const resolution = period.resolution[0];
+
     period.Point.forEach((p: any) => {
       const position = parseInt(p.position[0]);
       const priceAmount = parseFloat(p["price.amount"][0]);
+
       const pointTime = new Date(startStr);
+
       if (resolution === "PT60M" || resolution === "PT1H") {
         pointTime.setUTCHours(pointTime.getUTCHours() + position - 1);
       } else if (resolution === "PT15M") {
         pointTime.setUTCMinutes(pointTime.getUTCMinutes() + (position - 1) * 15);
       }
-      prices.push({ time: pointTime.toISOString(), value: priceAmount / 10 });
+
+      prices.push({
+        time: pointTime.toISOString(),
+        value: priceAmount / 10
+      });
     });
   });
+
   prices.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
   return prices;
 }
 
 app.get("/api/prices", async (req, res) => {
   const country = (req.query.country as string) || "LV";
-  if (!DOMAIN_MAPPING[country]) return res.status(400).json({ error: "Unsupported country code" });
+
+  if (!DOMAIN_MAPPING[country]) {
+    return res.status(400).json({ error: "Unsupported country code" });
+  }
+
   const token = process.env.ENTSOE_API_TOKEN;
-  if (!token) return res.status(500).json({ error: "ENTSOE_API_TOKEN is missing.", isMissingToken: true });
+
+  if (!token) {
+    return res.status(500).json({
+      error: "ENTSOE_API_TOKEN is missing.",
+      isMissingToken: true
+    });
+  }
+
   const cached = getFresh(priceCache, country);
-  if (cached) return res.json({ prices: cached, cached: true });
+
+  if (cached) {
+    return res.json({ prices: cached, cached: true });
+  }
+
   try {
     const prices = await fetchPricesFromEntsoe(country, token);
-    priceCache.set(country, { data: prices, expires: Date.now() + PRICE_TTL_MS });
+
+    priceCache.set(country, {
+      data: prices,
+      expires: Date.now() + PRICE_TTL_MS
+    });
+
     res.json({ prices });
+
   } catch (error: any) {
     console.error("ENTSO-E API Error:", error.message);
-    res.status(500).json({ error: error.message || "Failed to fetch prices from ENTSO-E" });
-  }
-});
 
-/**
- * Extract a JSON array of strings from arbitrary model output.
- * Handles plain JSON, markdown-wrapped JSON, and noisy responses.
- */
-function extractAdviceArray(raw: string): string[] {
-  if (!raw) return [];
-  // Strip Markdown code fences
-  const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-  // Try direct parse first
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed)) return parsed.filter(x => typeof x === "string");
-    if (parsed && typeof parsed === "object") {
-      // Maybe wrapped in { advice: [...] } or { tips: [...] }
-      const arr = parsed.advice || parsed.tips || parsed.items || Object.values(parsed).find(v => Array.isArray(v));
-      if (Array.isArray(arr)) return arr.filter((x: any) => typeof x === "string");
-    }
-  } catch { /* fall through */ }
-  // Try to find the largest array-looking substring
-  const matches = [...cleaned.matchAll(/\[[\s\S]*?\]/g)].map(m => m[0]);
-  for (const candidate of matches.sort((a, b) => b.length - a.length)) {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (Array.isArray(parsed)) return parsed.filter(x => typeof x === "string");
-    } catch { /* try next */ }
-  }
-  return [];
-}
-
-app.post("/api/advice", async (req, res) => {
-  const { prices, country, locale } = req.body;
-  if (!prices || !Array.isArray(prices)) return res.status(400).json({ error: "Prices needed" });
-
-  const cacheKey = `${country}:${locale || "lv"}`;
-  const cached = getFresh(adviceCache, cacheKey);
-  if (cached) return res.json({ advice: cached, cached: true });
-
-  if (!process.env.GEMINI_API_KEY) {
-    console.error("[advice] GEMINI_API_KEY is not set");
-    return res.status(500).json({ error: "GEMINI_API_KEY missing", advice: [] });
-  }
-
-  const langCode = (locale || "lv").split("-")[0];
-  const languageName = LANGUAGE_NAMES[langCode] || "English";
-
-  // Build a compact price summary the model can reason about
-  const slice = prices.slice(0, 48) as { time: string; value: number }[];
-  const priceLines = slice.map(p => `${p.time}: ${p.value.toFixed(2)}`).join("\n");
-
-  const prompt = `You are a household energy-saving expert. Below are spot electricity prices (ct/kWh) for the next 48 hours in country ${country}.
-
-Write EXACTLY 3 short, practical tips for a household. Each tip must:
-- be 1–2 sentences only
-- mention at least one specific clock-hour or time window from the data
-- suggest a concrete action (laundry, dishwasher, water heater, EV charging, etc.)
-- be written ENTIRELY in ${languageName}
-
-PRICES:
-${priceLines}
-
-Return ONLY a JSON array of exactly 3 strings, no other text. Example: ["tip 1", "tip 2", "tip 3"]`;
-
-  try {
-    // Models to try, in order. As of 2026-05, gemini-1.5-flash is fully
-    // shut down (returns 404) and gemini-2.0-flash is being retired on
-    // 2026-06-01, so gemini-2.5-flash is the current default and
-    // gemini-2.5-flash-lite is a robust, lower-cost fallback.
-    const MODEL_CANDIDATES = [
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-    ];
-
-    let result;
-    let lastErr: any = null;
-    for (const modelName of MODEL_CANDIDATES) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
-        });
-        result = await model.generateContent(prompt);
-        if (modelName !== MODEL_CANDIDATES[0]) {
-          console.warn(`[advice] Primary model failed; succeeded with fallback "${modelName}"`);
-        }
-        break;
-      } catch (genErr: any) {
-        lastErr = genErr;
-        console.warn(`[advice] Model "${modelName}" failed:`, genErr?.message);
-      }
-    }
-    if (!result) {
-      throw lastErr || new Error("All Gemini models failed");
-    }
-
-    const raw = result.response.text();
-    const advice = extractAdviceArray(raw);
-
-    if (!advice.length) {
-      console.error("[advice] Empty/unparseable model output:", raw.slice(0, 500));
-      return res.status(502).json({ error: "Model returned no usable tips", advice: [] });
-    }
-
-    adviceCache.set(cacheKey, { data: advice, expires: Date.now() + ADVICE_TTL_MS });
-    res.json({ advice });
-  } catch (e: any) {
-    console.error("[advice] Generation failed:", e?.message || e, e?.stack?.split("\n")?.[0]);
-    res.status(500).json({ error: e?.message || "Advice failed", advice: [] });
+    res.status(500).json({
+      error: error.message || "Failed to fetch prices from ENTSO-E"
+    });
   }
 });
 
 async function start() {
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa"
+    });
+
     app.use(vite.middlewares);
+
   } else {
-    app.use(express.static(path.join(process.cwd(), "dist")));
-    app.get("*", (req, res) => res.sendFile(path.join(process.cwd(), "dist/index.html")));
+
+    const distPath = path.join(process.cwd(), "dist");
+
+    // FIX priekš Render cache problēmas
+    app.use(express.static(distPath, {
+      etag: true,
+      maxAge: "1y",
+      immutable: true,
+
+      setHeaders: (res, filePath) => {
+
+        // index.html NEKEŠOJAM
+        if (filePath.endsWith("index.html")) {
+          res.setHeader(
+            "Cache-Control",
+            "no-store, no-cache, must-revalidate, proxy-revalidate"
+          );
+
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+        }
+      }
+    }));
+
+    app.get("*", (req, res) => {
+
+      // papildus drošība
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+      );
+
+      res.sendFile(path.join(distPath, "index.html"));
+    });
   }
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server: http://localhost:${PORT}`));
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server: http://localhost:${PORT}`);
+  });
 }
+
 start();
